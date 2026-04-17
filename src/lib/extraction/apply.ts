@@ -83,6 +83,7 @@ async function applyDl(ctx: ApplyContext, dl: DriverLicenseExtraction): Promise<
   });
 
   let customerId: string | null = deal[customerIdField];
+  let wasReused = false;
 
   // If no customer linked yet, try matching existing by DL#
   if (!customerId) {
@@ -92,11 +93,13 @@ async function applyDl(ctx: ApplyContext, dl: DriverLicenseExtraction): Promise<
       lastName: dl.lastName,
       dob: dl.dob,
     });
-    if (existing) customerId = existing.id;
+    if (existing) {
+      customerId = existing.id;
+      wasReused = true;
+    }
   }
 
   if (!customerId) {
-    // Create new customer with all extracted fields
     const { data: created, error: insErr } = await ctx.supabase
       .from("customers")
       .insert(patch)
@@ -111,8 +114,13 @@ async function applyDl(ctx: ApplyContext, dl: DriverLicenseExtraction): Promise<
       .update({ [customerIdField]: customerId })
       .eq("id", ctx.dealId);
   } else {
-    // Merge into existing — only write changed fields, record provenance
     await mergeAndAudit(ctx, "customers", customerId, patch);
+    if (wasReused) {
+      await ctx.supabase
+        .from("deals")
+        .update({ [customerIdField]: customerId })
+        .eq("id", ctx.dealId);
+    }
   }
 
   // Auto-set deal title if blank
@@ -134,8 +142,24 @@ async function applyDl(ctx: ApplyContext, dl: DriverLicenseExtraction): Promise<
     warnings.push(`DL state is ${dl.dlState}, not OH — confirm with customer.`);
   }
 
+  // Prior-deal count for the returning-customer signal.
+  let priorDealsLabel = "";
+  if (wasReused) {
+    const { count } = await ctx.supabase
+      .from("deals")
+      .select("id", { count: "exact", head: true })
+      .or(`primary_customer_id.eq.${customerId},co_buyer_customer_id.eq.${customerId}`)
+      .neq("id", ctx.dealId);
+    if (typeof count === "number" && count > 0) {
+      priorDealsLabel = ` (${count} prior deal${count === 1 ? "" : "s"})`;
+    }
+  }
+
+  const who = targetIsCoBuyer ? "co-buyer" : "primary";
+  const namePart = dl.lastName ? ` ${dl.lastName}` : "";
+  const verb = wasReused ? "Reused existing" : "Created";
   return {
-    summary: `Applied ${Object.keys(patch).length} DL fields to ${targetIsCoBuyer ? "co-buyer" : "primary"}${dl.lastName ? ` (${dl.lastName})` : ""}.`,
+    summary: `${verb} ${who} customer${namePart}${priorDealsLabel}. Applied ${Object.keys(patch).length} DL fields.`,
     fieldsApplied: Object.keys(patch),
     warnings,
   };
