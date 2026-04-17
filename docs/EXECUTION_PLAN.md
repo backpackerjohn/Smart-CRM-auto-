@@ -77,11 +77,11 @@ Assuming you run `npm install`, set up `.env.local`, apply the migration, and en
 
 These are the honest gaps — the code exists but doesn't reach the user:
 
-- ❌ **Extracted fields never reach the Deal/Customer profile.** `extractions.structured_data` holds the DL / VIN / insurance / etc. data, but nothing writes it back into `customers`, `deals`, or `vehicles`. Result: the Profile panel always shows blanks, even after you capture a DL.
-- ❌ **Checklist never populates.** `src/lib/checklist/compute.ts` is a pure reducer, but no code path writes to `checklist_items`. The ChecklistPanel always says "No items yet."
-- ❌ **Source-images gallery is missing.** Captures upload to Storage, but there's no UI to view the photos (right-hand column mentioned in the strategy doc).
-- ❌ **"Fill Forms" button doesn't exist.** The `/api/pdf/fill` endpoint works, but there's no UI trigger on the Deal page.
-- ❌ **Filled PDFs aren't listed in the Deal.** `filled_pdfs` rows get created, but no UI displays them or offers download/print.
+- ✅ ~~Extracted fields never reach the Deal/Customer profile.~~ **Shipped in Slice A (`c573f55`).** `src/lib/extraction/apply.ts` routes each capture kind into DB writes on `customers` / `deals` / `vehicles`. Customer-match-by-DL# in `match-customer.ts`. Deal title auto-generated. Audit rows in `customer_edits`.
+- ✅ ~~Checklist never populates.~~ **Shipped in Slice B (`c573f55`).** `src/lib/checklist/persist.ts` recomputes and replaces `checklist_items`. Called on deal create, after every capture extraction, and via `POST /api/checklist/recompute`. ChatThread calls `router.refresh()` on `extraction_applied` phase messages so panels update live.
+- ✅ ~~Source-images gallery is missing.~~ **Shipped in Slice C.** `CapturesGallery` component + server-side signed URL generation.
+- ✅ ~~"Fill Forms" button doesn't exist.~~ **Shipped in Slice C.** `FillFormsButton` on the Deal header, grouped by `form_set`.
+- ✅ ~~Filled PDFs aren't listed in the Deal.~~ **Shipped in Slice C.** `FilledPdfsPanel` with signed URLs for download + open.
 - ❌ **Auto-archive worker is not built.** Deals won't move `delivered → archived` on their own at 24h.
 - ❌ **Customer DL-match prompt isn't built.** Every DL capture will (eventually, once Slice A ships) create a new Customer even for returning customers.
 - ❌ **Typed-correction parser isn't built.** If the user types "address is 456 Oak", the chat model sees it, but nothing deterministically updates the Customer record.
@@ -96,13 +96,13 @@ These are the honest gaps — the code exists but doesn't reach the user:
 
 ## 4. Critical gaps, ranked
 
-If you only fix three things next, fix these. Without them the app doesn't feel real:
+~~If you only fix three things next, fix these.~~ **All three shipped.** The core loop is now complete: capture → profile populates → checklist flips → fill forms → download.
 
-1. **Extraction propagation** (Slice A). Without this, capture is theater. This is the single biggest gap.
-2. **Checklist auto-populate** (Slice B). Drives the main UI element that communicates deal state.
-3. **Fill-forms button + filled-PDFs UI** (Slice C). Without this the user can't see the payoff — the whole point of the app.
+1. ✅ **Extraction propagation** (Slice A — commit `c573f55`).
+2. ✅ **Checklist auto-populate** (Slice B — commit `c573f55`).
+3. ✅ **Fill-forms button + filled-PDFs UI + source-images gallery** (Slice C).
 
-Once those three ship, the app has a complete loop: capture → profile populates → checklist flips → fill forms → download. Everything after is polish.
+Next up: polish + hardening in Slices D–I below.
 
 ---
 

@@ -5,10 +5,16 @@ import { ChatThread } from "@/components/chat-thread";
 import { ChecklistPanel } from "@/components/checklist-panel";
 import { ProfilePanel } from "@/components/profile-panel";
 import { StageControls } from "@/components/stage-controls";
+import { FillFormsButton } from "@/components/fill-forms-button";
+import { FilledPdfsPanel, type FilledPdfRow } from "@/components/filled-pdfs-panel";
+import { CapturesGallery, type GalleryRow } from "@/components/captures-gallery";
+import type { Capture, FilledPdf, PdfForm } from "@/types/db";
 
 interface Props {
   params: Promise<{ id: string }>;
 }
+
+const SIGNED_URL_SECONDS = 60 * 60;
 
 export default async function DealPage({ params }: Props) {
   const { id } = await params;
@@ -30,6 +36,9 @@ export default async function DealPage({ params }: Props) {
     { data: trade },
     { data: messages },
     { data: checklist },
+    { data: forms },
+    { data: filled },
+    { data: captures },
   ] = await Promise.all([
     supabase.from("deals").select("*").order("updated_at", { ascending: false }).limit(200),
     deal.primary_customer_id
@@ -46,7 +55,13 @@ export default async function DealPage({ params }: Props) {
       : Promise.resolve({ data: null }),
     supabase.from("chat_messages").select("*").eq("deal_id", id).order("created_at", { ascending: true }).limit(200),
     supabase.from("checklist_items").select("*").eq("deal_id", id).order("sort_order", { ascending: true }),
+    supabase.from("pdf_forms").select("*").order("name", { ascending: true }),
+    supabase.from("filled_pdfs").select("*").eq("deal_id", id).order("created_at", { ascending: false }),
+    supabase.from("captures").select("*").eq("deal_id", id).order("created_at", { ascending: false }),
   ]);
+
+  const filledRows = await withFormAndUrls(supabase, (filled ?? []) as FilledPdf[], forms ?? []);
+  const galleryRows = await withGalleryUrls(supabase, (captures ?? []) as Capture[]);
 
   return (
     <div className="flex h-screen">
@@ -60,7 +75,10 @@ export default async function DealPage({ params }: Props) {
             <h1 className="text-lg font-semibold">{deal.title ?? "(untitled deal)"}</h1>
             <p className="text-xs text-zinc-400">Updated {new Date(deal.updated_at).toLocaleString()}</p>
           </div>
-          <StageControls deal={deal} />
+          <div className="flex items-center gap-3">
+            <FillFormsButton dealId={id} forms={forms ?? []} />
+            <StageControls deal={deal} />
+          </div>
         </header>
 
         <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[1fr_1fr]">
@@ -73,6 +91,8 @@ export default async function DealPage({ params }: Props) {
               vehicle={vehicle ?? null}
               trade={trade ?? null}
             />
+            <FilledPdfsPanel rows={filledRows} />
+            <CapturesGallery rows={galleryRows} />
           </div>
           <div className="h-full min-h-0">
             <ChatThread dealId={id} initialMessages={messages ?? []} />
@@ -80,5 +100,40 @@ export default async function DealPage({ params }: Props) {
         </div>
       </main>
     </div>
+  );
+}
+
+async function withFormAndUrls(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  filled: FilledPdf[],
+  forms: PdfForm[],
+): Promise<FilledPdfRow[]> {
+  const formsById = new Map(forms.map((f) => [f.id, f]));
+  return Promise.all(
+    filled.map(async (f) => {
+      const { data: signed } = await supabase.storage
+        .from("pdf-filled")
+        .createSignedUrl(f.storage_path, SIGNED_URL_SECONDS);
+      const form = formsById.get(f.pdf_form_id);
+      return {
+        ...f,
+        signedUrl: signed?.signedUrl ?? null,
+        form: form ? { id: form.id, name: form.name } : null,
+      } satisfies FilledPdfRow;
+    }),
+  );
+}
+
+async function withGalleryUrls(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  captures: Capture[],
+): Promise<GalleryRow[]> {
+  return Promise.all(
+    captures.map(async (c) => {
+      const { data: signed } = await supabase.storage
+        .from("captures")
+        .createSignedUrl(c.storage_path, SIGNED_URL_SECONDS);
+      return { ...c, signedUrl: signed?.signedUrl ?? null } satisfies GalleryRow;
+    }),
   );
 }
