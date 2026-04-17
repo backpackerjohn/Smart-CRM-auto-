@@ -150,6 +150,7 @@ export function CaptureScreen({ activeDeals }: Props) {
         {!shot ? (
           <video ref={videoRef} playsInline muted className="h-full w-full object-cover" />
         ) : (
+          // eslint-disable-next-line @next/next/no-img-element -- blob URL preview; next/image requires a remote optimizer
           <img src={shot.url} alt="capture" className="h-full w-full object-contain" />
         )}
         <canvas ref={canvasRef} className="hidden" />
