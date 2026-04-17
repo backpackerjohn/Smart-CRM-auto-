@@ -93,6 +93,7 @@ export interface Deal {
   archived_at: string | null;
   title: string | null;
   notes: string | null;
+  confirmed_fields: Record<string, boolean>;
 }
 
 export interface Capture {

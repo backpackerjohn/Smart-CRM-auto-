@@ -11,6 +11,7 @@ import type {
   DmsScreenshotExtraction,
 } from "@/types/extraction";
 import { normalizeVin, isValidVin } from "@/lib/validation/vin";
+import { isValidOhioDl } from "@/lib/validation/ohio-dl";
 import { matchCustomer } from "./match-customer";
 
 // Routes a Gemini extraction result into concrete DB writes on customers/deals/vehicles.
@@ -140,6 +141,8 @@ async function applyDl(ctx: ApplyContext, dl: DriverLicenseExtraction): Promise<
   const warnings: string[] = [];
   if (dl.dlState && dl.dlState.toUpperCase() !== "OH") {
     warnings.push(`DL state is ${dl.dlState}, not OH — confirm with customer.`);
+  } else if (dl.dlState && dl.dlState.toUpperCase() === "OH" && dl.dlNumber && !isValidOhioDl(dl.dlNumber)) {
+    warnings.push(`DL# "${dl.dlNumber}" doesn't match Ohio 2-letter + 6-digit format — verify.`);
   }
 
   // Prior-deal count for the returning-customer signal.
