@@ -1,0 +1,23 @@
+# Minimal Supabase project config.
+# Run `supabase link --project-ref <your-ref>` after creating a project, then `supabase db push`.
+project_id = "smart-crm-auto"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000"]
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"

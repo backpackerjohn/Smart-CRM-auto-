@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  background: theme("colors.surface.DEFAULT");
+  color: #e7e9ee;
+  height: 100%;
+}
+
+body {
+  font-family: theme("fontFamily.sans");
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Reduce tap delay on mobile */
+html {
+  touch-action: manipulation;
+}
+
+/* Hide scrollbars on iOS chat list while preserving scroll */
+.scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #3a414d; border-radius: 3px; }
+
+/* Used by checklist + confidence badges */
+.badge-ok { @apply bg-ok/15 text-ok; }
+.badge-warn { @apply bg-warn/15 text-warn; }
+.badge-missing { @apply bg-surface-3 text-zinc-400; }
+.badge-manual { @apply bg-accent-muted/30 text-accent; }
