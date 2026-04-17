@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { answerInDealChat } from "@/lib/gemini/chat";
+import { parseCorrections } from "@/lib/chat/parse-corrections";
+import { applyCorrections } from "@/lib/chat/apply-corrections";
+import { recomputeChecklist } from "@/lib/checklist/persist";
 import type { ChatMessage } from "@/types/db";
 
 export async function POST(request: NextRequest) {
@@ -20,7 +23,26 @@ export async function POST(request: NextRequest) {
   });
   if (insErr) return new NextResponse(insErr.message, { status: 500 });
 
-  // Fetch deal context in parallel.
+  // ─── Deterministic correction pass ─────────────────────────────────────
+  // If the user typed a clean correction ("address is 456 Oak", "payoff is $23,500"),
+  // apply it deterministically and skip the LLM call. Faster, cheaper, predictable.
+  const corrections = parseCorrections(content);
+  if (corrections.length > 0) {
+    const applied = await applyCorrections(supabase, dealId, corrections);
+    if (applied.length > 0) {
+      await recomputeChecklist(supabase, dealId);
+      const labels = Array.from(new Set(applied.map((a) => a.label))).join(", ");
+      await supabase.from("chat_messages").insert({
+        deal_id: dealId,
+        role: "assistant",
+        content: `Got it — updated ${labels}.`,
+        metadata: { phase: "correction_applied", applied },
+      });
+      return NextResponse.json({ ok: true, corrections: applied });
+    }
+  }
+
+  // ─── Fall through to grounded LLM chat ─────────────────────────────────
   const { data: deal } = await supabase.from("deals").select("*").eq("id", dealId).maybeSingle();
   if (!deal) return new NextResponse("deal not found", { status: 404 });
 
@@ -41,7 +63,6 @@ export async function POST(request: NextRequest) {
 
   const recent = (recentRes.data ?? []).reverse() as ChatMessage[];
 
-  // Fire the LLM call and persist the response.
   try {
     const answer = await answerInDealChat({
       deal,
