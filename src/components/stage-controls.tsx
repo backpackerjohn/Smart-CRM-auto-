@@ -23,13 +23,13 @@ export function StageControls({ deal }: { deal: Deal }) {
   const [busy, setBusy] = useState(false);
   const next = NEXT_STAGE[deal.stage];
 
-  async function advance() {
-    if (!next || busy) return;
+  async function transition(stage: DealStage) {
+    if (busy) return;
     setBusy(true);
     const res = await fetch(`/api/deals/${deal.id}/stage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ stage: next }),
+      body: JSON.stringify({ stage }),
     });
     setBusy(false);
     if (res.ok) router.refresh();
@@ -50,14 +50,25 @@ export function StageControls({ deal }: { deal: Deal }) {
           auto-archives in {deliveredCountdown}h
         </span>
       )}
-      {next && (
+
+      {deal.stage === "archived" ? (
         <button
-          onClick={advance}
+          onClick={() => transition("active")}
           disabled={busy}
-          className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+          className="rounded-md bg-surface-2 px-3 py-1 text-xs font-medium text-zinc-200 disabled:opacity-50"
         >
-          Move to {STAGE_LABEL[next]}
+          Restore to Active
         </button>
+      ) : (
+        next && (
+          <button
+            onClick={() => transition(next)}
+            disabled={busy}
+            className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+          >
+            Move to {STAGE_LABEL[next]}
+          </button>
+        )
       )}
     </div>
   );

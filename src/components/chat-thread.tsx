@@ -12,7 +12,7 @@ interface Props {
 }
 
 // Chat metadata phases that should re-render server components (profile + checklist).
-const REFRESH_PHASES = new Set(["extraction_applied", "correction_applied"]);
+const REFRESH_PHASES = new Set(["extraction_applied", "correction_applied", "stage_changed"]);
 
 export function ChatThread({ dealId, initialMessages }: Props) {
   const [messages, setMessages] = useState(initialMessages);
