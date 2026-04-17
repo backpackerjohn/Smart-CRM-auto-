@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CaptureKind, Deal } from "@/types/db";
 import { cn } from "@/lib/utils";
+import { enqueueCapture, drainQueue, countPending } from "@/lib/offline/queue";
 
 const KIND_OPTIONS: Array<{ value: CaptureKind; label: string }> = [
   { value: "dl_front", label: "DL front" },
@@ -28,6 +29,21 @@ export function CaptureScreen({ activeDeals }: Props) {
   const [shot, setShot] = useState<{ blob: Blob; url: string } | null>(null);
   const [kind, setKind] = useState<CaptureKind>("dl_front");
   const [assigning, setAssigning] = useState(false);
+  const [pendingUploads, setPendingUploads] = useState(0);
+
+  // Drain queue on mount + whenever the browser comes back online.
+  useEffect(() => {
+    async function sync() {
+      const { sent } = await drainQueue().catch(() => ({ sent: 0, failed: 0 }));
+      const n = await countPending().catch(() => 0);
+      setPendingUploads(n);
+      return sent;
+    }
+    sync();
+    function onOnline() { sync(); }
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,16 +101,35 @@ export function CaptureScreen({ activeDeals }: Props) {
     if (target === "deal" && dealId) form.set("dealId", dealId);
     if (target === "new") form.set("createNewDeal", "1");
 
-    const res = await fetch("/api/captures", { method: "POST", body: form });
-    setAssigning(false);
-    if (!res.ok) {
-      setError(await res.text());
-      return;
-    }
-    const { dealId: returnedDealId } = await res.json();
-    retake();
-    if (returnedDealId) {
-      window.location.href = `/deals/${returnedDealId}`;
+    try {
+      if (!navigator.onLine) throw new Error("offline");
+      const res = await fetch("/api/captures", { method: "POST", body: form });
+      if (!res.ok) throw new Error(await res.text());
+      const { dealId: returnedDealId } = await res.json();
+      retake();
+      setAssigning(false);
+      if (returnedDealId) {
+        window.location.href = `/deals/${returnedDealId}`;
+      }
+    } catch (err) {
+      // Network / offline fallback: queue locally and move on.
+      try {
+        await enqueueCapture({
+          dealId: target === "deal" ? (dealId ?? null) : null,
+          kind,
+          assignedTo: "unassigned",
+          device: "mobile",
+          createNewDeal: target === "new",
+          blob: shot.blob,
+          filename: `${kind}.jpg`,
+        });
+        const n = await countPending();
+        setPendingUploads(n);
+        retake();
+      } catch (queueErr) {
+        setError(err instanceof Error ? err.message : "Upload failed and queue unavailable.");
+      }
+      setAssigning(false);
     }
   }
 
@@ -133,6 +168,12 @@ export function CaptureScreen({ activeDeals }: Props) {
             </button>
           ))}
         </div>
+
+        {pendingUploads > 0 && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-warn/90 px-3 py-1 text-[11px] font-medium text-black">
+            {pendingUploads} queued · will upload when online
+          </div>
+        )}
       </div>
 
       {!shot ? (
