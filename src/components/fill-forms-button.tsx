@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PdfForm } from "@/types/db";
@@ -44,12 +45,12 @@ export function FillFormsButton({ dealId, forms }: Props) {
 
   if (forms.length === 0) {
     return (
-      <a
+      <Link
         href="/settings/pdf-forms"
         className="rounded-md bg-surface-2 px-3 py-1 text-xs text-zinc-300"
       >
         Upload a PDF form →
-      </a>
+      </Link>
     );
   }
 

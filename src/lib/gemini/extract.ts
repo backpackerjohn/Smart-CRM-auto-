@@ -24,13 +24,19 @@ const SYSTEM = `You extract structured data from dealership documents. Output mu
 
 interface ImagePart {
   inlineData: { data: string; mimeType: string };
+  [k: string]: unknown;
+}
+
+interface TextPart {
+  text: string;
+  [k: string]: unknown;
 }
 
 function imagePart(base64: string, mimeType: string): ImagePart {
   return { inlineData: { data: base64, mimeType } };
 }
 
-function textPart(text: string) {
+function textPart(text: string): TextPart {
   return { text };
 }
 
