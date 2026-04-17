@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import type { CaptureKind } from "@/types/db";
+import type { CaptureKind, CaptureOwner } from "@/types/db";
 import { extractCapture } from "@/lib/gemini/extract";
+import { applyExtraction } from "@/lib/extraction/apply";
+import { recomputeChecklist } from "@/lib/checklist/persist";
 
-// Upload path: POST multipart with `file`, `kind`, optional `dealId`, optional `createNewDeal`.
-// Side effects: uploads to Storage → creates capture row → runs Gemini extraction → inserts chat message.
+// Upload path: POST multipart with `file`, `kind`, optional `dealId`, optional `createNewDeal`, optional `assignedTo`.
+// Flow: upload to Storage → insert capture → extract (Gemini) → apply to Customer/Deal/Vehicle → recompute checklist.
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -13,14 +15,14 @@ export async function POST(request: NextRequest) {
 
   const form = await request.formData();
   const file = form.get("file") as File | null;
-  const kind = (form.get("kind") as string | null) ?? "other";
+  const kind = ((form.get("kind") as string | null) ?? "other") as CaptureKind;
+  const assignedTo = ((form.get("assignedTo") as string | null) ?? "unassigned") as CaptureOwner;
   const device = (form.get("device") as string | null) ?? "unknown";
   let dealId = form.get("dealId") as string | null;
   const createNew = form.get("createNewDeal") === "1";
 
   if (!file) return new NextResponse("file required", { status: 400 });
 
-  // Route to deal
   if (createNew) {
     const { data: d, error: dErr } = await supabase
       .from("deals")
@@ -31,7 +33,6 @@ export async function POST(request: NextRequest) {
     dealId = d.id;
   }
 
-  // Upload bytes to Storage
   const buf = new Uint8Array(await file.arrayBuffer());
   const captureId = crypto.randomUUID();
   const storagePath = `${user.id}/${dealId ?? "unassigned"}/${captureId}.jpg`;
@@ -46,13 +47,13 @@ export async function POST(request: NextRequest) {
     storage_path: storagePath,
     mime_type: file.type || "image/jpeg",
     filename: file.name,
-    kind: kind as CaptureKind,
+    kind,
+    assigned_to: assignedTo,
     device,
     bytes: buf.byteLength,
   });
   if (capErr) return new NextResponse(capErr.message, { status: 500 });
 
-  // Ghost message in chat so user sees "extracting…"
   if (dealId) {
     await supabase.from("chat_messages").insert({
       deal_id: dealId,
@@ -63,31 +64,61 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Run extraction in background (best-effort; fire-and-forget is fine here — client subscribes to realtime).
+  // Background: extract → apply → recompute checklist → post summary chat message.
+  // Fire-and-forget; client subscribes to realtime on chat_messages + checklist_items.
   queueMicrotask(async () => {
     try {
       const base64 = Buffer.from(buf).toString("base64");
       const { structured, latencyMs, model } = await extractCapture({
         imageBase64: base64,
         mimeType: file.type || "image/jpeg",
-        kind: kind as CaptureKind,
+        kind,
         context: kind === "dl_front" || kind === "dl_back" ? "Ohio DL expected 99% of the time." : undefined,
       });
-      await supabase.from("extractions").insert({
-        capture_id: captureId,
-        doc_type: kind as CaptureKind,
-        structured_data: structured as Record<string, unknown>,
-        confidence: {},
-        model,
-        latency_ms: latencyMs,
-      });
+
+      const { data: extractionRow } = await supabase
+        .from("extractions")
+        .insert({
+          capture_id: captureId,
+          doc_type: kind,
+          structured_data: structured as Record<string, unknown>,
+          confidence: {},
+          model,
+          latency_ms: latencyMs,
+        })
+        .select("id")
+        .single();
+
+      let applySummary = "Extraction stored.";
+      let warnings: string[] = [];
       if (dealId) {
+        const result = await applyExtraction({
+          supabase,
+          dealId,
+          captureId,
+          captureKind: kind,
+          assignedTo,
+          structured,
+        });
+        applySummary = result.summary;
+        warnings = result.warnings;
+
+        await recomputeChecklist(supabase, dealId);
+
         await supabase.from("chat_messages").insert({
           deal_id: dealId,
           role: "assistant",
-          content: `Extracted ${kind.replace(/_/g, " ")}. Review in the profile panel.`,
+          content: warnings.length > 0
+            ? `${applySummary}\n\n⚠️ ${warnings.join(" ")}`
+            : applySummary,
           capture_id: captureId,
-          metadata: { phase: "extraction_complete", fields: structured },
+          metadata: {
+            phase: "extraction_applied",
+            extraction_id: extractionRow?.id,
+            fields_applied: result.fieldsApplied,
+            warnings,
+            latency_ms: latencyMs,
+          },
         });
       }
     } catch (err) {

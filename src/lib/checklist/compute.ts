@@ -51,7 +51,7 @@ export function computeChecklist(input: ComputeInput): ChecklistRow[] {
   ));
   if (input.primary?.dl_expiration && isExpired(input.primary.dl_expiration)) {
     rows.push(row(
-      "primary_dl_front",
+      "primary_dl_expired",
       "Primary DL is expired",
       "warn",
       12,
@@ -76,7 +76,7 @@ export function computeChecklist(input: ComputeInput): ChecklistRow[] {
     input.deal.insurance_expires, new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
   )) {
     rows.push(row(
-      "insurance_card",
+      "insurance_expiring_soon",
       "Insurance expires within 7 days — verify with customer",
       "warn",
       31,

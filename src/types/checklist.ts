@@ -13,9 +13,12 @@ export interface ChecklistRow {
 export type ChecklistKind =
   | "primary_dl_front"
   | "primary_dl_back"
+  | "primary_dl_expired"
   | "co_buyer_dl_front"
   | "co_buyer_dl_back"
+  | "co_buyer_dl_expired"
   | "insurance_card"
+  | "insurance_expiring_soon"
   | "vehicle_of_interest"
   | "trade_registration"
   | "trade_payoff"

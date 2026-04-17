@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { ChatMessage } from "@/types/db";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/browser";
@@ -10,11 +11,15 @@ interface Props {
   initialMessages: ChatMessage[];
 }
 
+// Chat metadata phases that should re-render server components (profile + checklist).
+const REFRESH_PHASES = new Set(["extraction_applied", "correction_applied"]);
+
 export function ChatThread({ dealId, initialMessages }: Props) {
   const [messages, setMessages] = useState(initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   // Subscribe to realtime messages for this deal.
   useEffect(() => {
@@ -27,13 +32,18 @@ export function ChatThread({ dealId, initialMessages }: Props) {
         (payload) => {
           const m = payload.new as ChatMessage;
           setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+
+          const phase = (m.metadata as { phase?: string } | null)?.phase;
+          if (phase && REFRESH_PHASES.has(phase)) {
+            router.refresh();
+          }
         },
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [dealId]);
+  }, [dealId, router]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
