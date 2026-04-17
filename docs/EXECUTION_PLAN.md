@@ -110,7 +110,7 @@ Next up: polish + hardening in Slices D–I below.
 
 Each slice is ~1 day of work and ships end-to-end user value on its own. Order matters.
 
-### Slice A — Extraction propagation (make capture useful)
+### Slice A — Extraction propagation (make capture useful) — ✅ **Shipped `c573f55`**
 **Goal:** When a capture's Gemini extraction finishes, the data lands on the right row of the right table. User sees the DL info appear in the profile panel.
 
 Work:
@@ -129,7 +129,7 @@ Work:
 
 Success check: capture a DL on mobile, open the Deal on desktop, see `first_name / last_name / dl_number / address_line1` filled in within 5 seconds.
 
-### Slice B — Checklist auto-recompute
+### Slice B — Checklist auto-recompute — ✅ **Shipped `c573f55`**
 **Goal:** ChecklistPanel shows live, accurate items.
 
 Work:
@@ -140,7 +140,7 @@ Work:
 
 Success check: no captures yet → 3+ "missing" rows show ("Primary DL — front", "Insurance card", "Vehicle of interest"). Capture DL → row flips to ✓ complete within 5s.
 
-### Slice C — Fill-forms button + filled-PDFs UI + source-images gallery
+### Slice C — Fill-forms button + filled-PDFs UI + source-images gallery — ✅ **Shipped `c36f6aa`**
 **Goal:** Close the loop. User sees photos and clicks one button to produce filled PDFs.
 
 Work:
@@ -152,7 +152,7 @@ Work:
 
 Success check: capture a few docs, click Fill Forms, get a PDF with fields populated, download it, verify it looks right in a PDF viewer.
 
-### Slice D — Typed-correction parser
+### Slice D — Typed-correction parser — ✅ **Shipped `f25a081`**
 **Goal:** "address is 456 Oak St" in chat updates the Customer profile deterministically.
 
 Work:
@@ -168,7 +168,7 @@ Work:
 
 Success check: type "address is 456 Oak St Columbus OH 43215" → profile panel updates within 2s; chat shows "Got it — updated address" with an undo.
 
-### Slice E — Auto-archive + lifecycle polish
+### Slice E — Auto-archive + lifecycle polish — ✅ **Shipped `26b61a9`**
 **Goal:** Delivered deals disappear from Active list at the 24h mark.
 
 Work:
@@ -184,7 +184,7 @@ Work:
 
 Success check: manually mark a deal delivered with `delivered_at` = now - 25h, wait for cron, confirm it moved to Archived.
 
-### Slice F — Customer matching on DL capture
+### Slice F — Customer matching on DL capture — ✅ **Shipped `be437dc`** (core match was in Slice A; this commit surfaced the "reused vs created" + prior-deal-count in the chat summary)
 **Goal:** Returning customers aren't re-created.
 
 Work:
@@ -193,7 +193,7 @@ Work:
 
 Success check: capture a DL, extract, then capture the same DL again on a new deal → offered to reuse existing customer.
 
-### Slice G — Validation + confidence UI
+### Slice G — Validation + confidence UI — ✅ **Shipped `95ef7a4`**
 **Goal:** High-stakes fields force a confirm tap.
 
 Work:
@@ -204,26 +204,26 @@ Work:
 
 Success check: extract a DL with a partially-obscured DOB → field shows with yellow highlight + "unclear — confirm" badge.
 
-### Slice H — PWA polish
+### Slice H — PWA polish — ⏳ **Partially shipped `10efb16`** (offline capture queue done; icons + install prompt remain)
 **Goal:** Installable with proper icons and a working offline-capture queue.
 
 Work:
-- Generate icon set (192, 512, 512-maskable). Drop in `/public/icons/`.
-- Service worker: IndexedDB queue for `POST /api/captures` when offline; replay on `sync` event.
-- "Install app" prompt on first mobile visit.
-- Tune viewport / iOS safe-area insets on the capture screen.
+- ✅ Offline queue: `src/lib/offline/queue.ts` with IndexedDB; `capture-screen.tsx` queues on failure and drains on `window 'online'` events; pending-count badge overlays the viewfinder.
+- ❌ Generate icon set (192, 512, 512-maskable). Drop in `/public/icons/`. (Still placeholder; needs real artwork.)
+- ❌ "Install app" prompt using `beforeinstallprompt`.
+- ❌ Tune viewport / iOS safe-area insets on the capture screen.
 
 Success check: install the PWA on an iPhone, toggle airplane mode, capture a photo, toggle back on, photo uploads within 30s.
 
-### Slice I — Ops / deploy
+### Slice I — Ops / deploy — ⏳ **Partially shipped** (retention purge done; deploy + CI remain)
 **Goal:** Production-deployable.
 
 Work:
-- Deploy to Vercel + a managed Supabase project.
-- Verify Gemini API key is on the zero-retention tier ("data not used for model training" checkbox in Google AI Studio).
-- Scheduled purge job for captures older than 90 days (retain extractions + filled PDFs indefinitely — see plan section 8).
-- Basic logging: Vercel request logs + a `app_events` table for critical errors.
-- Typecheck + lint in CI (`npm run typecheck && npm run lint && npm run build`).
+- ✅ Retention purge: `supabase/migrations/20260417030000_retention_purge.sql` runs a daily `purge_old_captures()` pg_cron that deletes capture rows + storage objects older than 90 days. Extractions, customer_edits, and filled PDFs remain.
+- ❌ Deploy to Vercel + a managed Supabase project.
+- ❌ Verify Gemini API key is on the zero-retention tier (manual step; noted in README).
+- ❌ Basic logging: Vercel request logs + a `app_events` table for critical errors.
+- ❌ Typecheck + lint in CI (`npm run typecheck && npm run lint && npm run build`).
 
 Success check: open the production URL on your phone, end-to-end flow works, captures land in production Supabase.
 
